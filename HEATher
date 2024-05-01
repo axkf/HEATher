@@ -1,0 +1,1101 @@
+#!/bin/bash
+
+<<'////'
+TODO:
+
+ - address files in -T/P/s/c by file:term
+ 
+ - add sophisticated linearity test
+
+KNOWN ISSUES:
+ 
+////
+
+
+HELP=$(
+cat <<- EOF
+
+--------------------------------------------------------------------------------
+                                  HEATher
+--------------------------------------------------------------------------------
+
+author:       https://github.com/axkf
+dependencies: bash 4.4.20(1) , GNU awk 4.2.1
+version:      2024-04-27
+
+
+  HEATher is a tool that calculates the chemical potential and all of its compo-
+  nents from vasp phonon calculations (IBRION 5 and 6) of molecules. It can be 
+  used to get values for specific temperatures and pressure values or output 
+  formula strings, that can be utilized as input for other programs.
+
+
+------------------------------ GENERAL USAGE -----------------------------------
+
+    path/HEATher [-options] FILES
+
+------------------------------ FILES / INPUT -----------------------------------
+
+
+  HEATher accepts molecular phonon calculations in OUTCAR format, irrespective of 
+  file name or extension. If multiple files are given, they will be processed in 
+  order and deleted from the argument list before processing options. Hence,  
+  options and files can be given in any order. At the moment piping is not
+  supported.
+
+
+-------------------------- OPTIONS AND PRINTING --------------------------------
+
+
+PARAMETERS:
+
+  To get values, each file needs its own set of temperature- (in K, at least 2K) 
+  and pressure values (in Pa), which are to be supplied as a space-separated list 
+  via "-T" and "-P" using integer, floating point or exponential notation. 
+  Unfortunately, the symmetry parameter sigma, which is needed for the moment of 
+  inertia calculation, needs to be supplied manually by using "-s". If only 
+  one value is given, this value is used for all files, if none is given or the 
+  number of values given differs from that of the files the program defaults to 
+  -s 1 and/or -T 298.15 and/or -P 1.01325E+05. For example
+  
+    path/HEATher -s 2 5 -T 1000 file1 file2 -p
+
+  is equivalent to
+  
+    path/HEATher -s 2 5 -T 1000 1000 -P 1.01325E+05 1.01325E+05 file1 file2 -p .
+  
+  
+T- and P-SERIES:
+  
+  By using another delimiter it is possible to expand T- and or P-arguments 
+  to generate a T-/P-series. Characters bash might misinterpret should be 
+  avoided, escaped or single-quoted ("," , ":" , "_" and "#" are fine). Naturally, 
+  characters used within numbers should not be used as well. All rules discussed 
+  above still apply, since each such list is treated as a single argument. For 
+  example
+  
+    path/HEATher -s 2 5 -T 1300,1400 30,40,50 -P 1E4 10,100,1E3,1E4 file1 file2 -p
+  
+  prints one T-series for file1 and four T-series for file2 (one for each value 
+  of P).
+  
+  
+CORRECTIONS:
+  
+  Three correction options (-cH, -cS, -cG) were implemented to manipulate the output 
+  by adding additional terms, factors or exponents. This can be used to account for 
+  electronic degeneracy, for example
+  
+    path/HEATher -s 2 -T 1000 -cG "-R*T*log(3)/1000" file1
+  
+  or
+  
+    path/HEATher -s 2 -T 1000 -cS "+R*log(3)" file1
+  
+  for a triplett state, internal rotations and/or empirical corrections. All 
+  operators implemented in GNU awk as well as some fundamental constants (see 
+  chapter EXPORT) can be used. Make sure there is an operator connecting the 
+  corrections to the original expression and to include unit conversions. Since the 
+  logic of assigning arguments to files is similar to that of T, P and sigma, there 
+  should be no space inside the terms. Finally, the terms should also be quoted to 
+  avoid interference of bash.
+  
+
+PRINTING:
+
+  Calculated values can be printed by calling the -p option. By default this prints  
+  the sum formula, energy, zero-point energy, enthalpy change, evaluated enthalpy 
+  correction and total enthalpy, entropy correction and total entropy, as well as
+  the correction of the Gibbs free energy and its total value. All values are given
+  in kJ/mol except for the entropy (J/mol/K). Please use the correction options, to 
+  convert to another unit.
+  
+  Contents and format of the output table are freely customizable by specifying the 
+  desired arrys (see EXPORT) and their format as a printf-string. For example
+  
+    -p '"%-10s %.2f\n" ${A_HTR_CMPND[$number]} ${A_HTR_VAL_energy[$number]}'
+  
+  prints the sum formulas, as well as the energies as floating point numbers with a 
+  precision of two digits. Printing is done for the whole array ($number being the 
+  counting variable). In case of array-appending (see below) calling -p is thus only 
+  necessary in the last call of the script. Please quote the format string as shown
+  in the example. For safety reasons any semicolon in the string will be deleted.
+  
+
+APPEND ARRAYS:
+  
+  To group calculations with similar parameters/corrections the option "-a" can be 
+  used. This disables the array reset at the start of the program to append the 
+  following entries instead of overwriting. Available arrays are listed below.
+  
+  
+--------------------------------- EXPORT ---------------------------------------
+
+
+  Using the shell utility "source" via
+  
+    source path/HEATher [-options] FILES
+  
+  or
+  
+    . path/HEATher [-options] FILES
+
+  allows for direct access of all calculated values via indexed arrays:
+	
+    A_HTR_VAL_energy
+    A_HTR_VAL_zpe
+    A_HTR_VAL_H_trans
+    A_HTR_VAL_H_rot
+    A_HTR_VAL_H_vib
+    A_HTR_VAL_H_diff
+    A_HTR_VAL_H_corr
+    A_HTR_VAL_H_total
+    A_HTR_VAL_S_trans
+    A_HTR_VAL_S_rot
+    A_HTR_VAL_S_vib
+    A_HTR_VAL_S_corr
+    A_HTR_VAL_S_total
+    A_HTR_VAL_G_corr
+    A_HTR_VAL_G_total
+  
+  Moreover, a formula string is generated for each of the properties and their 
+  components, which can be used as input for further calculations and plotting:
+
+    A_HTR_FML_H_trans
+    A_HTR_FML_H_rot
+    A_HTR_FML_H_vib
+    A_HTR_FML_H_diff
+    A_HTR_FML_H_corr
+    A_HTR_FML_H_total
+    A_HTR_FML_S_trans
+    A_HTR_FML_S_rot
+    A_HTR_FML_S_vib
+    A_HTR_FML_S_corr
+    A_HTR_FML_S_total
+    A_HTR_FML_G_corr
+    A_HTR_FML_G_total
+
+  Since there is unfortunately no easily portable sum function, the latter can 
+  however get quite lengthy for bigger molecules. To enhance readability, none
+  of the formulas contains values for the fundamental constants used, the latter
+  are however exported as well:
+  
+    NA=6.02214076E+23 1/mol
+    h=6.62607015E-34 Js
+    kB=1.380649E-23 J/K
+    R=-8.31446261815324 J/mol/K
+    F=96485 cG/mol
+    u=1.6605390666050E-27 kg
+    pi=3.141592653589793
+
+  Some basic structure information is availlable via 
+  
+    A_HTR_ELEM
+    A_HTR_ELEZ
+    A_HTR_CMPND
+
+  which contain strings of all involved elements, their respective number of 
+  atoms and a sum formula (all sorted using IUPAC pseudo-electronegativity). To 
+  link these to the respective files, two additional arrays are created
+  
+    A_HTR_FILES
+    A_HTR_INDEX
+
+  the first of which contains the file name for each number, while the second 
+  can be used to find the respective number for each of the files. Using the 
+  series function duplicates the respective files, to make each calculated value 
+  accessible independantly, thus changing the numbering in A_HTR_FILES. In this 
+  case, A_HTR_INDEX stores all respective numbers as a string. Usually, all arrays
+  are reset at the start of the program. This can however be disabled with the 
+  tag "-a".
+
+EOF
+) ; 
+
+
+help=$(
+cat <<- EOF
+
+--------------------------------------------------------------------------------
+                                  HEATher
+--------------------------------------------------------------------------------
+
+General usage:
+
+  path/HEATher [-options] FILES
+
+Calculation options and parameters:
+
+  -s [value]     symmetry parameter (default: 1)
+  
+  -T [value]     change temperature in Kelvin (default: 298.15 K), accepts lists
+  
+  -P [value]     change pressure in Pascal (default: 101325 Pa), accepts lists
+  
+  -cH [term]     correction of the total enthalpy
+  
+  -cS [term]     correction of the total entropy
+  
+  -cG [term]     correction of the total Gibbs free energy
+
+Printing:
+
+  -p [string]    print, customizable by adding a printf-string
+  
+  -a             append arrays
+
+Export:
+
+  . path/HEATher [-options] FILES
+
+ available arrays:
+
+  A_HTR_FILES
+  A_HTR_INDEX
+
+  A_HTR_ELEM
+  A_HTR_ELEZ
+  A_HTR_CMPND
+
+  A_HTR_VAL_energy
+  A_HTR_VAL_zpe
+  A_HTR_VAL_H_trans
+  A_HTR_VAL_H_rot
+  A_HTR_VAL_H_vib
+  A_HTR_VAL_H_diff
+  A_HTR_VAL_H_corr
+  A_HTR_VAL_H_total
+  A_HTR_VAL_S_trans
+  A_HTR_VAL_S_rot
+  A_HTR_VAL_S_vib
+  A_HTR_VAL_S_corr
+  A_HTR_VAL_S_total
+  A_HTR_VAL_G_corr
+  A_HTR_VAL_G_total
+
+  A_HTR_FML_H_trans
+  A_HTR_FML_H_rot
+  A_HTR_FML_H_vib
+  A_HTR_FML_H_diff
+  A_HTR_FML_H_corr
+  A_HTR_FML_H_total
+  A_HTR_FML_S_trans
+  A_HTR_FML_S_rot
+  A_HTR_FML_S_vib
+  A_HTR_FML_S_corr
+  A_HTR_FML_S_total
+  A_HTR_FML_G_corr
+  A_HTR_FML_G_total
+  
+  NA=6.02214076E+23 1/mol
+  h=6.62607015E-34 Js
+  kB=1.380649E-23 J/K
+  R=-8.31446261815324 J/mol/K
+  F=96485 cG/mol
+  u=1.6605390666050E-27 kg
+  pi=3.141592653589793
+
+EOF
+) ; 
+
+
+#enable extended globbing
+shopt -s extglob
+#reset
+unset ARGS FILES A_OPT lastopt lastarg ; 
+#process ARGUMENTS
+ARGS="${@}" ; 
+for arg in $ARGS; do 
+	#find files
+	if [[ -f $arg ]]; then  
+		FILES+=" $arg" ; 
+	#find options
+	elif [[ -z ${arg##-+([^[:digit:]])} ]]; then 
+		lastopt="$arg" ; 
+		declare -A A_OPT+=(["$arg"]="empty") ; 
+	#find option arguments 
+	else 
+		lastarg=${A_OPT["$lastopt"]} ; 
+		#replace empty
+		if [[ -z ${lastarg#empty} ]]; then 
+			declare -A A_OPT+=(["$lastopt"]="$arg") ; 
+		#append
+		else 
+			declare -A A_OPT+=(["$lastopt"]+=" $arg") ; 
+		fi ; 
+	fi ; 
+done ; 
+unset lastopt lastarg ; 
+Fflag=$(set -f -- $FILES ; echo $#) ; 
+
+
+
+#  --help : HELP
+if [[ -n ${A_OPT["--help"]} ]]; then 
+	echo "$HELP" ; 
+	echo "" ; 
+	exit ; 
+fi ; 
+
+
+# -h : cheat sheet
+if [[ -n ${A_OPT["-h"]} || -z $ARGS ]]; then 
+	echo "$help" ; 
+	echo "" ; 
+	exit ; 
+fi ; 
+
+
+#process -T
+Topts=${A_OPT["-T"]} ; 
+Tflag=$(set -f -- ${Topts#empty} ; echo $#) ; 
+unset T ; 
+if [[ $Tflag -eq 0 ]]; then 
+	for file in $FILES; do 
+		T+="298.15 " ; 
+	done ; 
+elif [[ $Tflag -eq 1 ]]; then 
+	for file in $FILES; do 
+		T+=$Topts" " ; 
+	done ; 
+elif [[ $Tflag -ne $Fflag && $Tflag -gt 1 ]]; then 
+	for file in $FILES; do 
+		T+="298.15 " ; 
+	done ; 
+else 
+	T=$Topts ; 
+fi ; 
+
+
+#process -P
+Popts=${A_OPT["-P"]} ; 
+Pflag=$(set -f -- ${Popts#empty} ; echo $#) ; 
+unset P ; 
+if [[ $Pflag -eq 0 ]]; then 
+	for file in $FILES; do 
+		P+="101325 " ; 
+	done ; 
+elif [[ $Pflag -eq 1 ]]; then 
+	for file in $FILES; do 
+		P+=$Popts" " ; 
+	done ; 
+elif [[ $Pflag -ne $Fflag && $Pflag -gt 1 ]]; then 
+	for file in $FILES; do 
+		P+=$Popts" " ; 
+	done ; 
+else 
+	P=$Popts ; 
+fi ; 
+
+
+#process -s
+sopts=${A_OPT["-s"]} ; 
+sflag=$(set -f -- ${sopts#empty} ; echo $#) ; 
+unset sigma ; 
+if [[ $sflag -eq 0 ]]; then 
+	for file in $FILES; do
+		sigma+=1" " ; 
+	done ; 
+elif [[ $sflag -eq 1 ]]; then   
+	for file in $FILES; do 
+		sigma+=$sopts" " ; 
+	done ;
+elif [[ $sflag -ne $Fflag && $sflag -gt 1 ]]; then 
+	for file in $FILES; do
+		sigma+=1" " ; 
+	done ; 
+else 
+	sigma=$sopts ; 
+fi ; 
+
+
+#process -cH
+cHopts=${A_OPT["-cH"]} ; 
+cHflag=$(set -f -- ${cHopts#empty} ; echo $#) ; 
+unset cH ; 
+if [[ $cHflag -eq 1 ]]; then 
+	for file in $FILES; do 
+		cH+=$cHopts" " ; 
+	done ; 
+elif [[ $cHflag -eq $Fflag && $cHflag -gt 1 ]]; then 
+	cH=$cHopts ; 
+fi ; 
+
+
+#process -cS
+cSopts=${A_OPT["-cS"]} ; 
+cSflag=$(set -f -- ${cSopts#empty} ; echo $#) ; 
+unset cS ; 
+if [[ $cSflag -eq 1 ]]; then 
+	for file in $FILES; do 
+		cS+=$cSopts" " ; 
+	done ; 
+elif [[ $cSflag -eq $Fflag && $cSflag -gt 1 ]]; then 
+	cS=$cSopts ; 
+fi ; 
+
+
+#process -cG
+cGopts=${A_OPT["-cG"]} ; 
+cGflag=$(set -f -- ${cGopts#empty} ; echo $#) ; 
+unset cG ; 
+if [[ $cGflag -eq 1 ]]; then 
+	for file in $FILES; do 
+		cG+=$cGopts" " ; 
+	done ; 
+elif [[ $cGflag -eq $Fflag && $cGflag -gt 1 ]]; then 
+	cG=$cGopts ; 
+fi ; 
+
+
+# -p : PRINT
+popts=${A_OPT["-p"]} ; 
+if [[ -z $popts ]]; then 
+	pflag=0 ; 
+	popts="" ; 
+elif [[ -z ${popts#empty} ]]; then 
+	pflag=1 ; 
+	popts='"%-8s %17.8f %13.8f %13.8f %13.8f %17.8f %13.8f %15.8f %13.8f %17.8f\n" ${A_HTR_CMPND[$number]} ${A_HTR_VAL_energy[$number]} ${A_HTR_VAL_zpe[$number]} ${A_HTR_VAL_H_diff[$number]} ${A_HTR_VAL_H_corr[$number]} ${A_HTR_VAL_H_total[$number]} ${A_HTR_VAL_S_corr[$number]} ${A_HTR_VAL_S_total[$number]} ${A_HTR_VAL_G_corr[$number]} ${A_HTR_VAL_G_total[$number]}' ; 
+else 
+	pflag=1 ; 
+fi ; 
+
+# -a : APPEND ARRAYS
+aopts=${A_OPT["-a"]} ; 
+if [[ -z $aopts ]]; then 
+	aflag=0 ; 
+else 
+	aflag=1 ; 
+fi ; 
+
+
+#fundamental constants
+NA=6.02214076E+23 ; 
+h=6.62607015E-34 ; 
+kB=1.380649E-23 ; 
+R=8.31446261815324 ; 
+F=96485 ; 
+u=1.6605390666050E-27 ; 
+pi=3.141592653589793 ; 
+
+
+#reset
+if [[ $aflag -eq 0 ]]; then 
+	unset A_HTR_VAL_energy A_HTR_VAL_zpe ; 
+	
+	unset A_HTR_FML_H_trans A_HTR_FML_H_rot A_HTR_FML_H_vib A_HTR_FML_H_diff A_HTR_FML_H_corr A_HTR_FML_H_total ; 
+	unset A_HTR_VAL_H_trans A_HTR_VAL_H_rot A_HTR_VAL_H_vib A_HTR_VAL_H_diff A_HTR_VAL_H_corr A_HTR_VAL_H_total ; 
+	
+	unset A_HTR_FML_S_trans A_HTR_FML_S_rot A_HTR_FML_S_vib A_HTR_FML_S_corr A_HTR_FML_S_total ; 
+	unset A_HTR_VAL_S_trans A_HTR_VAL_S_rot A_HTR_VAL_S_vib A_HTR_VAL_S_corr A_HTR_VAL_S_total ; 
+	
+	unset A_HTR_FML_G_corr A_HTR_FML_G_total ; 
+	unset A_HTR_VAL_G_corr A_HTR_VAL_G_total ; 
+	
+	unset A_HTR_PAR_T A_HTR_PAR_P A_HTR_PAR_sigma ; 
+	unset A_HTR_FILES A_HTR_INDEX A_HTR_CMPND A_HTR_ELEM A_HTR_ELEZ A_HTR_LINEAR ; 
+	
+	fileindex_last=0 ; 
+fi ; 
+
+
+
+. <( gawk -v Fflag="$Fflag" -v T="$T" -v P="$P" -v sigma="$sigma" -v cH="$cH" -v cS="$cS" -v cG="$cG" -v fileindex_last="$fileindex_last" '
+# FUNCTIONS
+function array_invert(array_invert_ARRAY){ 
+	if(isarray(array_invert_ARRAY)){
+		for(number in array_invert_ARRAY){
+			array_invert_ARRAY[array_invert_ARRAY[number]]=number ; 
+			delete array_invert_ARRAY[number]
+		}
+	}
+ } ; 
+#reindex array with values from another array
+function array_reindex(array_reindex_ARRAY,array_reindex_INDEX){ 
+	if(!isarray(array_reindex_ARRAY) || !isarray(array_reindex_INDEX)){
+		return
+	} ; 
+	
+	for(number in array_reindex_ARRAY){
+		array_reindex_ARRAY[array_reindex_INDEX[number]]=array_reindex_ARRAY[number] ; 
+		delete array_reindex_ARRAY[number]
+	}
+ } ; 
+#sort elements according to IUPAC order
+function sort_elements(sort_elements_STRING_elem,sort_elements_STRING_prio,sort_elements_SPACER,save_procinfo_sorted_in,sort_elements_STRING_IUPAC,sort_elements_ARRAY_prio,sort_elements_ARRAY_residual,sort_elements_ARRAY_group,sort_elements_ARRAY_elem,sort_elements_STRING_result){ 
+	#test variables
+	if( !(typeof(sort_elements_STRING_elem)=="string" || typeof(sort_elements_STRING_elem)=="unassigned" || typeof(sort_elements_STRING_elem)=="untyped") ){
+		return
+	} ; 
+	if( typeof(sort_elements_STRING_prio)=="array" || typeof(sort_elements_STRING_prio)=="bool" || typeof(sort_elements_STRING_prio)=="regexp"){
+		return
+	} ; 
+	
+	#store array sorting order
+	save_procinfo_sorted_in=PROCINFO["sorted_in"] ; 
+	PROCINFO["sorted_in"]="@unsorted" ; 
+	
+	#define groups of the periodic system
+	sort_elements_ARRAY_residual[1]="Fr Cs Rb K Na Li " ; 
+	sort_elements_ARRAY_residual[2]="Ra Ba Sr Ca Mg Be " ; 
+	sort_elements_ARRAY_residual[3]="Ac La Y Sc " ; 
+	sort_elements_ARRAY_residual[4]="Rf Hf Zr Ti " ; 
+	sort_elements_ARRAY_residual[5]="Db Ta Nb V " ; 
+	sort_elements_ARRAY_residual[6]="Sg W Mo Cr " ; 
+	sort_elements_ARRAY_residual[7]="Bh Re Tc Mn " ; 
+	sort_elements_ARRAY_residual[8]="Hs Os Ru Fe " ; 
+	sort_elements_ARRAY_residual[9]="Mt Ir Rh Co " ; 
+	sort_elements_ARRAY_residual[10]="Ds Pt Pd Ni " ; 
+	sort_elements_ARRAY_residual[11]="Rg Au Ag Cu " ; 
+	sort_elements_ARRAY_residual[12]="Cn Hg Cd Zn " ; 
+	sort_elements_ARRAY_residual[13]="Nh Tl In Ga Al B " ; 
+	sort_elements_ARRAY_residual[14]="Fl Pb Sn Ge Si cG " ; 
+	sort_elements_ARRAY_residual[15]="Mc Bi Sb As P N " ; 
+	sort_elements_ARRAY_residual[16]="Lv Po Te Se S O " ; 
+	sort_elements_ARRAY_residual[17]="Ts At I Br Cl F " ; 
+	sort_elements_ARRAY_residual[18]="Og Rn Xe Kr Ar Ne He " ; 
+	sort_elements_ARRAY_residual[3"d"]="Sc Ti V Cr Mn Fe Co Ni Cu Zn " ; 
+	sort_elements_ARRAY_residual[4"d"]="Y Zr Nb Mo Tc Ru Rh Pd Ag Cd " ; 
+	sort_elements_ARRAY_residual[5"d"]="La Hf Ta W Re Os Ir Pt Au Hg " ; 
+	sort_elements_ARRAY_residual[6"d"]="Ac Rf Db Sg Bh Hs Mt Ds Rg Cn " ; 
+	sort_elements_ARRAY_residual[4"f"]="Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu " ; 
+	sort_elements_ARRAY_residual[5"f"]="Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr " ; 
+	
+	#define element order (IUPAC pseudo electronegativity)
+	sort_elements_STRING_IUPAC="Og Rn Xe Kr Ar Ne He Fr Cs Rb K Na Li Ra Ba Sr Ca Mg Be Lr No Md Fm Es Cf Bk Cm Am Pu Np U Pa Th Ac Lu Yb Tm Er Ho Dy Tb Gd Eu Sm Pm Nd Pr Ce La Y Sc Rf Hf Zr Ti Db Ta Nb V Sg W Mo Cr Bh Re Tc Mn Hs Os Ru Fe Mt Ir Rh Co Ds Pt Pd Ni Rg Au Ag Cu Cn Hg Cd Zn Nh Tl In Ga Al B Fl Pb Sn Ge Si cG Mc Bi Sb As P N H Lv Po Te Se S O Ts At I Br Cl F " ; 
+	
+	#process priority string
+	sort_elements_STRING_prio=sort_elements_STRING_prio" " ; 
+	if(gsub("X ","X ",sort_elements_STRING_prio)==0){
+		sort_elements_STRING_prio=sort_elements_STRING_prio"X "
+	} ; 
+	split(sort_elements_STRING_prio,sort_elements_ARRAY_prio," ") ; 
+	
+	#process specified groups: remove group elements from other groups and unspecified element list
+	for(number in sort_elements_ARRAY_prio){
+		if(sort_elements_ARRAY_prio[number] in sort_elements_ARRAY_residual){
+			split(sort_elements_ARRAY_residual[sort_elements_ARRAY_prio[number]],sort_elements_ARRAY_group," ") ; 
+			for(subnumber in sort_elements_ARRAY_group){
+				#delete group elements from X
+				gsub(sort_elements_ARRAY_group[subnumber]" ","",sort_elements_STRING_IUPAC) ; 
+				
+				#delete group elements from all other groups
+				for(group in sort_elements_ARRAY_residual){
+					if(group!=sort_elements_ARRAY_prio[number]){
+						gsub(sort_elements_ARRAY_group[subnumber]" ","",sort_elements_ARRAY_residual[group])
+					}
+				}
+			}
+		}
+	} ; 
+	#process specified elements: remove specified elements from groups and unspecified element list
+	for(number in sort_elements_ARRAY_prio){
+		if( (sort_elements_ARRAY_prio[number]~/^[[:upper:]][[:lower:]]?$/) && !(sort_elements_ARRAY_prio[number] in sort_elements_ARRAY_residual) ){
+			for(group in sort_elements_ARRAY_residual){
+				gsub(sort_elements_ARRAY_prio[number]" ","",sort_elements_ARRAY_residual[group]) ; 
+				gsub(sort_elements_ARRAY_prio[number]" ","",sort_elements_STRING_IUPAC)
+			}
+		}
+	} ; 
+	#process specified groups: replace groups in prio by elements
+	for(number in sort_elements_ARRAY_prio){
+		if(sort_elements_ARRAY_prio[number] in sort_elements_ARRAY_residual){
+			sort_elements_ARRAY_prio[number]=sort_elements_ARRAY_residual[sort_elements_ARRAY_prio[number]]
+		}
+	} ; 
+	#reassemble priority string
+	sort_elements_STRING_result="" ; 
+	for(number in sort_elements_ARRAY_prio){
+		sort_elements_STRING_result=sort_elements_STRING_result""sort_elements_ARRAY_prio[number]" "
+	} ; 
+	sub("X ",sort_elements_STRING_IUPAC,sort_elements_STRING_result) ; 
+	split(sort_elements_STRING_result,sort_elements_ARRAY_prio," ") ; 
+	array_invert(sort_elements_ARRAY_prio) ; 
+	
+	#process element string
+	if(sort_elements_STRING_elem!=""){
+		split(sort_elements_STRING_elem,sort_elements_ARRAY_elem," ") ; 
+		
+		#sort elements
+		for(number in sort_elements_ARRAY_elem){
+			sort_elements_ARRAY_elem[sort_elements_ARRAY_elem[number]]=sort_elements_ARRAY_prio[sort_elements_ARRAY_elem[number]] ; 
+			delete sort_elements_ARRAY_elem[number] ; 
+		} ; 
+		asorti(sort_elements_ARRAY_elem,sort_elements_ARRAY_elem,"@val_num_asc") ; 
+		
+		#reassemble element string
+		sort_elements_STRING_result="" ; 
+		for(number in sort_elements_ARRAY_elem){
+			sort_elements_STRING_result=sort_elements_STRING_result""sort_elements_ARRAY_elem[number]" "
+		}
+	} ; 
+	
+	#restore array sorting order
+	PROCINFO["sorted_in"]=save_procinfo_sorted_in ; 
+	
+	#return results
+	return sort_elements_STRING_result
+ } ; 
+
+BEGIN{ 
+	#fundamental constants
+	NA=6.02214076E+23 ; 		#Avogadro constant
+	h=6.62607015E-34 ; 			#Planck constant
+	kB=1.380649E-23 ; 			#Boltzmann constant
+	R=NA*kB ; 					#Gas constant
+	F=96485 ; 					#Faraday constant
+	u=1.6605390666050E-27 ; 	#atomic mass unit
+	pi=atan2(0,-1) ; 			#Pi
+	
+	#global variables
+	file="" ; 
+	if(T!=""){
+		split(T,a_T," ") ; 
+	} ; 
+	if(P!=""){
+		split(P,a_P," ") ; 
+	} ; 
+	split(sigma,a_sigma," ") ; 
+	if(cH!=""){
+		split(cH,a_cH," ") ; 
+	} ; 
+	if(cS!=""){
+		split(cS,a_cS," ") ; 
+	} ; 
+	if(cG!=""){
+		split(cG,a_cG," ") ; 
+	} ; 
+	
+	fileindex=fileindex_last ; 
+	print "number_0=\""fileindex"\"" ; 
+ }
+
+BEGINFILE{ 
+	line="" ; 
+	
+	#reset structure variables
+	delete a_BASE ; 
+	ELEM="" ; 
+	ELEZ="" ; 
+	MASS="" ; 
+	MODES="" ; 
+	
+	#reset coordinates
+	delete a_mass ; 
+	delete a_x ; 
+	delete a_y ;
+	delete a_z ; 
+	xc="" ; 
+	yc="" ; 
+	zc="" ; 
+	xflag="" ; 
+	atom="" ; 
+	ATOMS="" ; 
+	
+	#reset compounds
+	CMPND="" ; 
+	
+	#prepare file
+	file+=1 ; 
+	sigma=a_sigma[file] ; 
+	cH=a_cH[file] ; 
+	cS=a_cS[file] ; 
+	cG=a_cG[file] ; 
+ }
+
+/VRHFIN/{ gsub(/:.+$/,"") ; gsub(/^.+=/,"") ; ELEM=ELEM""$0" " } 
+/ions per type/{ sub(/[^0-9]+/,"",$0) ; ELEZ=$0 } 
+/POMASS.+;/{ gsub(/^[^0-9]+||;.+$/,"") ; MASS=MASS""$0" " } 
+/THz/{ MODES=MODES+1 ; gsub(/=/,"") ; A_v[MODES]=$3*10^12 } 
+/position of ions in cartesian coordinates/{xflag=1;next} /^$/{xflag=0} xflag{ 
+	if($1!=""){ 
+		ATOMS+=1 ; 
+		a_x[ATOMS]=$1 ; xc+=$1 ; 
+		a_y[ATOMS]=$2 ; yc+=$2 ; 
+		a_z[ATOMS]=$3 ; zc+=$3 ; 
+	} 
+ } 
+{ if(/FREE ENERGIE OF THE ION-ELECTRON SYSTEM/ && line==""){line=FNR} } 
+	FNR==line+4 { if(line!=""){ENERGY=$NF} ; 
+ }
+
+ENDFILE{ 
+	#prepara structure descriptors
+	split(ELEM,a_ELEM," ") ; 
+	split(ELEZ,a_ELEZ," ") ; 
+	split(MASS,a_MASS," ") ; 
+	
+	#structurize atom list
+	for(number in a_ELEZ){
+		#calculate base for each element
+		sum=0 ; 
+		for(subnumber=1;subnumber<number;subnumber++){
+			sum+=a_ELEZ[subnumber] ; 
+		} ; 
+		a_BASE[a_ELEM[number]]=sum ; 
+		BASE=BASE""sum" " ; 
+	} ; 
+	
+	#re-index arrays
+	array_reindex(a_ELEZ,a_ELEM) ; 
+	array_reindex(a_MASS,a_ELEM) ; 
+	array_invert(a_ELEM) ; 
+	
+	#sort elements
+	ELEM_s=sort_elements(ELEM,PRIO) ; 
+	split(ELEM_s,a_SORT," ") ; 
+	split(ELEM_s,a_ELEM_s," ") ; 
+	array_invert(a_ELEM_s) ; 
+	
+	#compound
+	for(number in a_SORT){
+		if(a_ELEZ[a_SORT[number]]>1){
+			CMPND=CMPND""a_SORT[number]""a_ELEZ[a_SORT[number]] ; 
+		}
+		else{
+			CMPND=CMPND""a_SORT[number] ; 
+		}
+	} ; 
+	
+	#test linearity: 6th mode>100cm^-1 ? linear
+	if(A_v[MODES-5]/2.99792458E+10>100){
+		MODES=MODES-5 ; 
+		linear=1 ; 
+	}
+	else{
+		MODES=MODES-6 ; 
+		linear=0 ; 
+	} ; 
+	
+	
+	######################### TRANSLATION #########################
+	
+	
+	MASS_TOTAL="" ; 
+	for(elem in a_ELEM){
+		MASS_TOTAL+=a_ELEZ[elem]*a_MASS[elem] ; 
+	} ; 
+	
+	#translational enthalpy / entropy : formula
+	POT_FML_H_trans="2.5*R*T/1000." ; 
+	POT_FML_S_trans="R*(log((2*pi*"MASS_TOTAL"*u/h**2)**(1.5)*(kB*T)**(2.5)/P)+2.5)" ; 
+	
+	
+	########################## ROTATION ###########################
+	
+	
+	#centre of gravity
+	xc="" ; yc="" ; zc="" ; 
+	for(elem in a_ELEM){ 
+		for(number=1;number<=a_ELEZ[elem];number++){ 
+			atom=a_BASE[elem]+number ; 
+			a_mass[atom]=a_MASS[elem] ; 
+			
+			xc+=a_mass[atom]*a_x[atom] ; 
+			yc+=a_mass[atom]*a_y[atom] ; 
+			zc+=a_mass[atom]*a_z[atom] ; 
+		} 
+	} ; 
+	xc=xc/MASS_TOTAL ; 
+	yc=yc/MASS_TOTAL ; 
+	zc=zc/MASS_TOTAL ; 
+	
+	I="" ; I_xx="" ; I_yy="" ; I_zz="" ; I_xy="" ; I_yz="" ; I_zx="" ; 
+	#nonlinear molecules
+	if(linear==0){
+		#moment of inertia
+		for(atom=1;atom<=ATOMS;atom++){ 
+			#centralized coordinates
+			a_xc[atom]=a_x[atom]-xc ; 
+			a_yc[atom]=a_y[atom]-yc ; 
+			a_zc[atom]=a_z[atom]-zc ; 
+			
+			#inertia tensor
+			I_xx+=a_mass[atom]*(a_yc[atom]**2 + a_zc[atom]**2) ; 
+			I_yy+=a_mass[atom]*(a_zc[atom]**2 + a_xc[atom]**2) ; 
+			I_zz+=a_mass[atom]*(a_xc[atom]**2 + a_yc[atom]**2) ; 
+			I_xy+=-a_mass[atom]*(a_xc[atom] * a_yc[atom]) ; 
+			I_yz+=-a_mass[atom]*(a_yc[atom] * a_zc[atom]) ; 
+			I_zx+=-a_mass[atom]*(a_zc[atom] * a_xc[atom]) ; 
+		} ; 
+		I=( I_xx*I_yy*I_zz + 2*I_xy*I_yz*I_zx - I_xx*I_yz**2 - I_yy*I_zx**2 - I_zz*I_xy**2 )*(u*1E-20)^3 ; 
+		
+		#rotational enthalpy / entropy : formula
+		POT_FML_H_rot="1.5*R*T/1000." ; 
+		POT_FML_S_rot="R*(log(8*pi**2/"sigma")+(1.5)*log(2*pi*kB*T/h**2)+(0.5)*log("sprintf("%21.15E",I)")+1.5)" ; 
+	}
+	#linear molecules
+	else{
+		#moment of inertia
+		for(atom=1;atom<=ATOMS;atom++){ 
+			#centralized coordinates
+			a_xc[atom]=a_x[atom]-xc ; 
+			a_yc[atom]=a_y[atom]-yc ; 
+			a_zc[atom]=a_z[atom]-zc ; 
+			
+			#linear moment of inertia
+			I+=a_mass[atom]*(a_xc[atom]**2 + a_yc[atom]**2 + a_zc[atom]**2)*u*1E-20 ; 
+		} ; 
+		
+		#rotational enthalpy / entropy : formula
+		POT_FML_H_rot="R*T/1000." ; 
+		POT_FML_S_rot="R*(log(8*pi**2*"sprintf("%21.15E",I)"*kB*T/("sigma"*h**2))+1)" ; 
+	} ; 
+	
+	
+	########################## VIBRATION ##########################
+	
+	
+	#zero-point energy
+	SUM_zpe="" ; 
+	for(mode=1;mode<=MODES;mode++){
+		SUM_zpe+=A_v[mode] ; 
+	} ; 
+	POT_VAL_zpe=0.5*h*SUM_zpe*(NA/1000) ; 
+	
+	#frequency terms
+	SUM_FML_vib_1="" ; 
+	SUM_FML_vib_2="" ; 
+	for(mode=1;mode<=MODES;mode++){
+		v="" ; 
+		v=sprintf("%21.15E",A_v[mode]) ; 
+		SUM_FML_vib_1=SUM_FML_vib_1"+log(1-exp(-(h*"v")/(kB*T)))" ; 
+		SUM_FML_vib_2=SUM_FML_vib_2"+(h*"v")/(kB*T)*exp(-(h*"v")/(kB*T))/(1-exp(-(h*"v")/(kB*T)))" ; 
+	} ; 
+	sub(/^[+ ]+/,"",SUM_FML_vib_1) ; 
+	sub(/^[+ ]+/,"",SUM_FML_vib_2) ; 
+	
+	#vibrational enthalpy / entropy : formula
+	POT_FML_H_vib="R*T*("SUM_FML_vib_2")/1000." ; 
+	POT_FML_S_vib="R*(("SUM_FML_vib_2")-("SUM_FML_vib_1"))" ; 
+	
+	
+	############################ TOTAL ############################
+	
+	
+	#convert energy [eV -> kJ/mol]
+	ENERGY=ENERGY*(F/1000) ; 
+	
+	#total enthalpy : formula
+	POT_FML_H_diff=POT_FML_H_trans" + "POT_FML_H_rot" + "POT_FML_H_vib ; 
+	POT_FML_H_total="( "sprintf("%.15f + %.15f",ENERGY,POT_VAL_zpe)" + "POT_FML_H_trans" + "POT_FML_H_rot" + "POT_FML_H_vib" )"cH ; 
+	
+	#total entropy : formula
+	POT_FML_S_total="( "POT_FML_S_trans" + "POT_FML_S_rot" + "POT_FML_S_vib" )"cS ; 
+	
+	#free energy : formula
+	POT_FML_G_total="( ("POT_FML_H_total") - T*("POT_FML_S_total")/1000. )"cG ; 
+	
+	
+	######################### T/P-SERIES ##########################
+	
+	
+	if(a_T[file]!="" && a_P[file]!=""){
+		#prepare T-series: T>=2K !!
+		gsub(/[^0-9 .Ee+-]+/," ",a_T[file]) ; 
+		split(a_T[file],a_T_file," ") ; 
+		
+		#prepare P-series
+		gsub(/[^0-9 .Ee+-]+/," ",a_P[file]) ; 
+		split(a_P[file],a_P_file," ") ; 
+		
+		for(press in a_P_file){
+			P=a_P_file[press] ; 
+			
+			for(temp in a_T_file){
+				T=a_T_file[temp] ; 
+				
+				#translation
+				POT_VAL_H_trans=2.5*R*T/1000 ; 
+				POT_VAL_S_trans=R*( log((2*pi*MASS_TOTAL*u / h**2)**(1.5)*(kB*T)**(2.5)/P) + 2.5 ) ; 
+				
+				#rotation
+				if(linear==0){
+					POT_VAL_H_rot=1.5*R*T/1000 ; 
+					POT_VAL_S_rot=R*( log(8*pi**2/sigma)+(1.5)*log(2*pi*kB*T/h**2)+(0.5)*log(I) + 1.5 ) ; 
+				}
+				else{
+					POT_VAL_H_rot=R*T/1000 ; 
+					POT_VAL_S_rot=R*( log(8*pi**2*I*kB*T / (sigma*h**2)) + 1 ) ; 
+				} ; 
+				
+				#vibration
+				SUM_VAL_vib_1="" ; 
+				SUM_VAL_vib_2="" ; 
+				for(mode=1;mode<=MODES;mode++){
+					X_i=(h*A_v[mode])/(kB*T) ; 
+					SUM_VAL_vib_1=SUM_VAL_vib_1 + log(1-exp(-X_i)) ; 
+					SUM_VAL_vib_2=SUM_VAL_vib_2 + X_i*exp(-X_i)/(1-exp(-X_i)) ; 
+				} ; 
+				POT_VAL_H_vib=R*T*SUM_VAL_vib_2/1000 ; 
+				POT_VAL_S_vib=-R*( SUM_VAL_vib_1 )+R*( SUM_VAL_vib_2 ) ; 
+				
+				#total entropy
+				POT_VAL_S_total=(POT_VAL_S_trans + POT_VAL_S_rot + POT_VAL_S_vib) ; 
+				
+				#total enthalpy
+				POT_VAL_H_diff=POT_VAL_H_trans + POT_VAL_H_rot + POT_VAL_H_vib ; 
+				
+				POT_VAL_H_total=ENERGY + POT_VAL_zpe + POT_VAL_H_trans + POT_VAL_H_rot + POT_VAL_H_vib ; 
+				
+				
+				#export
+				print "A_HTR_VAL_energy+=(\""sprintf("%.20f",ENERGY)"\") ; " ; 
+				print "A_HTR_VAL_zpe+=(\""sprintf("%.20f",POT_VAL_zpe)"\") ; " ; 
+				
+				print "A_HTR_FML_H_trans+=(\""POT_FML_H_trans"\") ; " ; 
+				print "A_HTR_FML_H_rot+=(\""POT_FML_H_rot"\") ; " ; 
+				print "A_HTR_FML_H_vib+=(\""POT_FML_H_vib"\") ; " ; 
+				print "A_HTR_FML_H_diff+=(\""POT_FML_H_diff"\") ; " ; 
+				print "A_HTR_FML_H_corr+=(\""cH"\") ; " ; 
+				print "A_HTR_FML_H_total+=(\""POT_FML_H_total"\") ; " ; 
+				print "A_HTR_FML_S_trans+=(\""POT_FML_S_trans"\") ; " ; 
+				print "A_HTR_FML_S_rot+=(\""POT_FML_S_rot"\") ; " ; 
+				print "A_HTR_FML_S_vib+=(\""POT_FML_S_vib"\") ; " ; 
+				print "A_HTR_FML_S_corr+=(\""cS"\") ; " ; 
+				print "A_HTR_FML_S_total+=(\""POT_FML_S_total"\") ; " ; 
+				print "A_HTR_FML_G_corr+=(\""cG"\") ; " ; 
+				print "A_HTR_FML_G_total+=(\""POT_FML_G_total"\") ; " ; 
+				
+				print "A_HTR_VAL_H_trans+=(\""sprintf("%.20f",POT_VAL_H_trans)"\") ; " ; 
+				print "A_HTR_VAL_H_rot+=(\""sprintf("%.20f",POT_VAL_H_rot)"\") ; " ; 
+				print "A_HTR_VAL_H_vib+=(\""sprintf("%.20f",POT_VAL_H_vib)"\") ; " ; 
+				print "A_HTR_VAL_H_diff+=(\""sprintf("%.20f",POT_VAL_H_diff)"\") ; " ; 
+				print "A_HTR_VAL_H_total+=(\""sprintf("%.30f",POT_VAL_H_total)"\") ; " ; 
+				print "A_HTR_VAL_S_trans+=(\""sprintf("%.20f",POT_VAL_S_trans)"\") ; " ; 
+				print "A_HTR_VAL_S_rot+=(\""sprintf("%.20f",POT_VAL_S_rot)"\") ; " ; 
+				print "A_HTR_VAL_S_vib+=(\""sprintf("%.20f",POT_VAL_S_vib)"\") ; " ; 
+				print "A_HTR_VAL_S_total+=(\""sprintf("%.30f",POT_VAL_S_total)"\") ; " ; 
+				
+				print "A_HTR_PAR_T+=(\""sprintf("%.20f",T)"\") ; " ; 
+				print "A_HTR_PAR_P+=(\""sprintf("%.20f",P)"\") ; " ; 
+				print "A_HTR_PAR_sigma+=(\""sprintf("%d",sigma)"\") ; " ; 
+				
+				print "A_HTR_ELEM+=(\""ELEM"\") ; " ; 
+				print "A_HTR_ELEZ+=(\""ELEZ"\") ; " ; 
+				print "A_HTR_CMPND+=(\""CMPND"\") ; " ; 
+				print "A_HTR_LINEAR+=(\""linear"\") ; " ; 
+				
+				print "A_HTR_FILES+=(\""FILENAME"\") ; " ; 
+				print "declare -A A_HTR_INDEX+=([\""FILENAME"\"]=${A_HTR_INDEX["FILENAME"]}\" "fileindex"\") ; " ; 
+				
+				print "fileindex_last=\""fileindex"\"" ; 
+				fileindex+=1 ; 
+			}
+		}
+	}
+	else{
+				#export
+				print "A_HTR_VAL_energy+=(\""sprintf("%.20f",ENERGY)"\") ; " ; 
+				print "A_HTR_VAL_zpe+=(\""sprintf("%.20f",POT_VAL_zpe)"\") ; " ; 
+				
+				print "A_HTR_FML_H_trans+=(\""POT_FML_H_trans"\") ; " ; 
+				print "A_HTR_FML_H_rot+=(\""POT_FML_H_rot"\") ; " ; 
+				print "A_HTR_FML_H_vib+=(\""POT_FML_H_vib"\") ; " ; 
+				print "A_HTR_FML_H_diff+=(\""POT_FML_H_diff"\") ; " ; 
+				print "A_HTR_FML_H_corr+=(\""cH"\") ; " ; 
+				print "A_HTR_FML_H_total+=(\""POT_FML_H_total"\") ; " ; 
+				print "A_HTR_FML_S_trans+=(\""POT_FML_S_trans"\") ; " ; 
+				print "A_HTR_FML_S_rot+=(\""POT_FML_S_rot"\") ; " ; 
+				print "A_HTR_FML_S_vib+=(\""POT_FML_S_vib"\") ; " ; 
+				print "A_HTR_FML_S_corr+=(\""cS"\") ; " ; 
+				print "A_HTR_FML_S_total+=(\""POT_FML_S_total"\") ; " ; 
+				print "A_HTR_FML_G_corr+=(\""cG"\") ; " ; 
+				print "A_HTR_FML_G_total+=(\""POT_FML_G_total"\") ; " ; 
+				
+				print "A_HTR_VAL_H_trans+=(\""0"\") ; " ; 
+				print "A_HTR_VAL_H_rot+=(\""0"\") ; " ; 
+				print "A_HTR_VAL_H_vib+=(\""0"\") ; " ; 
+				print "A_HTR_VAL_H_diff+=(\""0"\") ; " ; 
+				print "A_HTR_VAL_H_total+=(\""sprintf("%.30f",ENERGY)"\") ; " ; 
+				print "A_HTR_VAL_S_trans+=(\""0"\") ; " ; 
+				print "A_HTR_VAL_S_rot+=(\""0"\") ; " ; 
+				print "A_HTR_VAL_S_vib+=(\""0"\") ; " ; 
+				print "A_HTR_VAL_S_total+=(\""0"\") ; " ; 
+				
+				print "A_HTR_PAR_T+=(\""sprintf("%.20f",T)"\") ; " ; 
+				print "A_HTR_PAR_P+=(\""sprintf("%.20f",P)"\") ; " ; 
+				print "A_HTR_PAR_sigma+=(\""sprintf("%d",sigma)"\") ; " ; 
+				
+				print "A_HTR_ELEM+=(\""ELEM"\") ; " ; 
+				print "A_HTR_ELEZ+=(\""ELEZ"\") ; " ; 
+				print "A_HTR_CMPND+=(\""CMPND"\") ; " ; 
+				print "A_HTR_LINEAR+=(\""linear"\") ; " ; 
+				
+				print "A_HTR_FILES+=(\""FILENAME"\") ; " ; 
+				print "declare -A A_HTR_INDEX+=([\""FILENAME"\"]=${A_HTR_INDEX["FILENAME"]}\" "fileindex"\") ; " ; 
+				
+				print "fileindex_last=\""fileindex"\"" ; 
+				fileindex+=1 ; 
+	}
+ }' $FILES ) ; 
+
+
+
+#if [[ -n $T ]]; then 
+	#evaluate corrections
+	unset tmp ; 
+	#for number in ${!A_HTR_FILES[@]}; do 
+	for number in $( eval echo {$number_0..$(( $fileindex_last ))} ); do 
+		
+		
+		tmp=$(
+		cat <<- EOF
+		$tmp
+		
+		########## number $number ##########
+		
+		T = "${A_HTR_PAR_T[$number]}" ; 
+		P = "${A_HTR_PAR_P[$number]}" ; 
+		s = sigma = "${A_HTR_PAR_sigma[$number]}" ; 
+		
+		a_POT_VAL_H_total[$number] = "${A_HTR_VAL_H_total[$number]}" ; 
+		a_POT_VAL_H_corr[$number] = a_POT_VAL_H_total[$number] ${A_HTR_FML_H_corr[$number]} - a_POT_VAL_H_total[$number] ; 
+		a_POT_VAL_H_total[$number] = a_POT_VAL_H_total[$number] + a_POT_VAL_H_corr[$number] ; 
+		
+		a_POT_VAL_S_total[$number] = "${A_HTR_VAL_S_total[$number]}" ; 
+		a_POT_VAL_S_corr[$number] = a_POT_VAL_S_total[$number] ${A_HTR_FML_S_corr[$number]} - a_POT_VAL_S_total[$number] ; 
+		a_POT_VAL_S_total[$number] = a_POT_VAL_S_total[$number] + a_POT_VAL_S_corr[$number] ; 
+		
+		a_POT_VAL_G_total[$number] = a_POT_VAL_H_total[$number] - T*a_POT_VAL_S_total[$number]/1000 ; 
+		a_POT_VAL_G_corr[$number] = a_POT_VAL_G_total[$number] ${A_HTR_FML_G_corr[$number]} - a_POT_VAL_G_total[$number] ; 
+		a_POT_VAL_G_total[$number] = a_POT_VAL_G_total[$number] + a_POT_VAL_G_corr[$number] ; 
+	EOF
+		) ; 
+	done ; 
+
+	. <( gawk 'BEGIN{ 
+		#fundamental constants
+		NA=6.02214076E+23 ; 		#Avogadro constant
+		h=6.62607015E-34 ; 			#Planck constant
+		kB=1.380649E-23 ; 			#Boltzmann constant
+		R=NA*kB ; 					#Gas constant
+		F=96485 ; 					#Faraday constant
+		u=1.6605390666050E-27 ; 	#atomic mass unit
+		pi=atan2(0,-1) ; 			#Pi
+		
+		#definitions
+		'"$tmp"' ; 
+		
+		#evaluation and export
+		for(number in a_POT_VAL_G_total){ 
+			print "A_HTR_VAL_H_corr+=(["number"]=\""sprintf("%.20f",a_POT_VAL_H_corr[number])"\") ; " ; 
+			print "A_HTR_VAL_H_total+=(["number"]=\""sprintf("%.20f",a_POT_VAL_H_total[number])"\") ; " ; 
+			
+			print "A_HTR_VAL_S_corr+=(["number"]=\""sprintf("%.20f",a_POT_VAL_S_corr[number])"\") ; " ; 
+			print "A_HTR_VAL_S_total+=(["number"]=\""sprintf("%.20f",a_POT_VAL_S_total[number])"\") ; " ; 
+			
+			print "A_HTR_VAL_G_corr+=(["number"]=\""sprintf("%.20f",a_POT_VAL_G_corr[number])"\") ; " ; 
+			print "A_HTR_VAL_G_total+=(["number"]=\""sprintf("%.20f",a_POT_VAL_G_total[number])"\") ; " ; 
+		 }
+	 }' ) ; 
+
+	#print
+	for number in ${!A_HTR_FILES[@]}; do 
+		if [[ $pflag -eq 1 ]]; then 
+			eval printf ${popts//\;/} 2>/dev/null ; 
+		fi ; 
+	done ; 
+#fi ; 
+(( fileindex_last++ )) ; 
+
