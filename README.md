@@ -7,9 +7,9 @@ dependencies: bash 4.4.20(1) , GNU awk 4.2.1
 version:      2024-04-27
 
 
-  HEATher is a tool that calculates the chemical potential and all of its compo-
-  nents from vasp phonon calculations (IBRION 5 and 6) of molecules. It can be 
-  used to get values for specific temperatures and pressure values or output 
+  HEATher is a bash tool that calculates the chemical potential and all of its 
+  components from vasp phonon calculations (IBRION 5 and 6) of molecules. It can 
+  be used to get values for specific temperatures and pressure values or output 
   formula strings, that can be utilized as input for other programs.
 
 
