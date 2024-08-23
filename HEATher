@@ -21,7 +21,7 @@ cat <<- EOF
 
 author:       https://github.com/axkf
 dependencies: bash 4.4.20(1) , GNU awk 4.2.1
-version:      2024-04-30
+version:      2024-04-27
 
 
   HEATher is a tool that calculates the chemical potential and all of its compo-
@@ -184,7 +184,7 @@ APPEND ARRAYS:
     h=6.62607015E-34 Js
     kB=1.380649E-23 J/K
     R=-8.31446261815324 J/mol/K
-    F=96485 cG/mol
+    F=96485.64853321233100184 C/mol
     u=1.6605390666050E-27 kg
     pi=3.141592653589793
 
@@ -291,7 +291,7 @@ Export:
   h=6.62607015E-34 Js
   kB=1.380649E-23 J/K
   R=-8.31446261815324 J/mol/K
-  F=96485 cG/mol
+  F=96485.64853321233100184 C/mol
   u=1.6605390666050E-27 kg
   pi=3.141592653589793
 
@@ -474,7 +474,7 @@ NA=6.02214076E+23 ;
 h=6.62607015E-34 ; 
 kB=1.380649E-23 ; 
 R=8.31446261815324 ; 
-F=96485 ; 
+F=96485.64853321233100184 ; 
 u=1.6605390666050E-27 ; 
 pi=3.141592653589793 ; 
 
@@ -643,7 +643,7 @@ BEGIN{
 	h=6.62607015E-34 ; 			#Planck constant
 	kB=1.380649E-23 ; 			#Boltzmann constant
 	R=NA*kB ; 					#Gas constant
-	F=96485 ; 					#Faraday constant
+	F=96485.64853321233100184 ; #Faraday constant
 	u=1.6605390666050E-27 ; 	#atomic mass unit
 	pi=atan2(0,-1) ; 			#Pi
 	
@@ -1070,7 +1070,7 @@ ENDFILE{
 		h=6.62607015E-34 ; 			#Planck constant
 		kB=1.380649E-23 ; 			#Boltzmann constant
 		R=NA*kB ; 					#Gas constant
-		F=96485 ; 					#Faraday constant
+		F=96485.64853321233100184 ; #Faraday constant
 		u=1.6605390666050E-27 ; 	#atomic mass unit
 		pi=atan2(0,-1) ; 			#Pi
 		
