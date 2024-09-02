@@ -19,7 +19,7 @@ cat <<- EOF
                                   HEATher
 --------------------------------------------------------------------------------
 
-author:       https://github.com/axkf
+author:       Alexander Kafka, https://github.com/axkf
 dependencies: bash 4.4.20(1) , GNU awk 4.2.1
 version:      2024-04-27
 
